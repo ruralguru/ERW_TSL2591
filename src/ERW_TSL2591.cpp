@@ -90,11 +90,11 @@ int8_t ERW_TSL2591::begin(void)
   }
   else
   {
-    if( set_interrupts(ALS_INT_l, ALS_INT_h) != 0)
+    if( set_interrupts(initial_INT_l, initial_INT_h) != 0)
     {
       returnVal = -4;
     }
-    if( set_persistence(TSL2591_persistence) != 0 )
+    if( set_persistence(initial_persistence) != 0 )
     {
       returnVal -= 8;
     }
@@ -129,7 +129,7 @@ float ERW_TSL2591::host_process(void)
   // check for interrupts.
   // if interrupt then read val for auto gain control.
   // if no interrupt return lux.
-  
+
   return returnVal;
 }
 
@@ -152,7 +152,7 @@ int8_t ERW_TSL2591::test_INT(void)
   uint8_t read_holder1 = 0;
   uint8_t read_holder2 = 0;
   uint8_t read_holder3 = 0;
-  if( clearInterrupt(TSL2591_CMD_CLR_ALL) != 0 )
+  if( clear_interrupt(TSL2591_CMD_CLR_ALL) != 0 )
   {
     returnVal = -1;
   }
@@ -173,7 +173,7 @@ int8_t ERW_TSL2591::test_INT(void)
   {
     returnVal -= 8;
   }
-  if( clearInterrupt(TSL2591_CMD_CLR_ALL) != 0 )
+  if( clear_interrupt(TSL2591_CMD_CLR_ALL) != 0 )
   {
     returnVal -= 16;
   }
@@ -191,7 +191,7 @@ int8_t ERW_TSL2591::enable(uint8_t desired_enable)
   I2C_write(TSL2591_CMD_MASK | TSL2591_ENABLE, desired_enable);
   current_enable = I2C_read(TSL2591_CMD_MASK | TSL2591_ENABLE);
   current_enable &= (TSL2591_NPIEN_MASK | TSL2591_SAI_MASK | TSL2591_AIEN_MASK | TSL2591_AEN_MASK | TSL2591_PON_MASK);
-  if( read_enable ! = desired_enable)
+  if( current_enable != desired_enable)
   {
     returnVal = -1;
   }
@@ -208,10 +208,10 @@ int8_t ERW_TSL2591::disable(uint8_t desired_disable)
   int8_t returnVal = 0;
   I2C_write(TSL2591_CMD_MASK | TSL2591_ENABLE, desired_disable);
   current_enable = I2C_read(TSL2591_CMD_MASK | TSL2591_ENABLE);
-  desired_disable ~= desired_disable;
+  desired_disable = ~desired_disable;
   desired_disable &= (TSL2591_NPIEN_MASK | TSL2591_SAI_MASK | TSL2591_AIEN_MASK | TSL2591_AEN_MASK | TSL2591_PON_MASK);
   current_enable &= (TSL2591_NPIEN_MASK | TSL2591_SAI_MASK | TSL2591_AIEN_MASK | TSL2591_AEN_MASK | TSL2591_PON_MASK);
-  if( read_disable ! = desired_disable)
+  if( current_enable != desired_disable)
   {
     returnVal = -1;
   }
@@ -228,7 +228,7 @@ uint8_t ERW_TSL2591::set_sensitivity(uint8_t desired_gain, uint8_t desired_integ
 {
   uint8_t desired_command = 0;
   uint8_t read_command = 0;
-  unt8_t returnVal = 0;
+  uint8_t returnVal = 0;
 
   desired_command = desired_gain | desired_integration_time;
 
@@ -280,7 +280,7 @@ uint8_t ERW_TSL2591::set_sensitivity(uint8_t desired_gain, uint8_t desired_integ
     returnVal = read_command | 0x08; //set reserved bit to allow for all 0 read as fault.
   }
 
-  return returnVal
+  return returnVal;
 
 }
 
@@ -294,7 +294,7 @@ int8_t ERW_TSL2591::set_persistence(uint8_t desired_persistence)
   int8_t returnVal = 0;
   I2C_write(TSL2591_CMD_MASK | TSL2591_PERSIST, desired_persistence);
   current_persistence = I2C_read(TSL2591_CMD_MASK | TSL2591_PERSIST);
-  if( read_persistence != desired_persistence)
+  if( current_persistence != desired_persistence)
   {
     returnVal = -1;
   }
@@ -385,7 +385,7 @@ float ERW_TSL2591::get_LUX(void)
  */
 uint8_t ERW_TSL2591::get_status(void)
 {
-  current_status = read(TSL2591_CMD_MASK | TSL2591_STATUS);
+  current_status = I2C_read(TSL2591_CMD_MASK | TSL2591_STATUS);
   return current_status;
 }
 
@@ -419,7 +419,7 @@ void ERW_TSL2591::get_values(void)
  */
 uint8_t ERW_TSL2591::get_interrupts(void)
 {
-  uint8_t retunVal = 0;
+  uint8_t returnVal = 0;
   if( digitalRead(TSL2591_int_pin) == 1 )
   {
     returnVal = get_status();

@@ -192,7 +192,7 @@
      * @param[in]  desired_integration_time is the
      * @return 0 good, else returns read with bit 3 set.
      */
-    int8_t set_sensitivity(uint8_t desired_gain, uint8_t desired_integration_time);
+    uint8_t set_sensitivity(uint8_t desired_gain, uint8_t desired_integration_time);
 
     /**
      * set_persistence
