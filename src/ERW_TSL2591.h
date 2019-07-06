@@ -37,6 +37,9 @@
  #include <Arduino.h>
  #include <Wire.h>
 
+ #define SERIAL_DEBUG
+ #define SERIAL_DEBUG_PRIVATE
+
  // Channel 0 is full light spectrum. Channel 1 is IR spectrum.
 
  #define TSL2591_ADDR               0x29  //!<I2C address for device
@@ -78,34 +81,6 @@
  #define TSL2591_AGAIN_MASK         0x30  //!< ALS gain mask.
  #define TSL2591_ATIME_MASK         0x07  //!< ALS integration time mask.
 
- #define TSL2591_AGAIN_LOW          0x00  //!<ALS gain of x1
- #define TSL2591_AGAIN_MED          0x10  //!<ALS gain of x24.5
- #define TSL2591_AGAIN_HIGH         0x20  //!<ALS gain of x400
- #define TSL2591_AGAIN_MAX          0x30  //!<ALS gain of x 9200 / 9900.
-
- #define TSL2591_ATIME_100          0x00  //!<ALS time of 100ms.
- #define TSL2591_ATIME_200          0x01  //!<ALS time of 200ms.
- #define TSL2591_ATIME_300          0x02  //!<ALS time of 300ms.
- #define TSL2591_ATIME_400          0x03  //!<ALS time of 400ms.
- #define TSL2591_ATIME_500          0x04  //!<ALS time of 500ms.
- #define TSL2591_ATIME_600          0x05  //!<ALS time of 600ms.
-
- #define TSL2591_60_VALUES_MASK     0x0F  //!< 60 for interrupt mask.
- #define TSL2591_55_VALUES_MASK     0x0E  //!< 55 for interrupt  mask.
- #define TSL2591_50_VALUES_MASK     0x0D  //!< 50 for interrupt  mask.
- #define TSL2591_45_VALUES_MASK     0x0C  //!< 45 for interrupt  mask.
- #define TSL2591_40_VALUES_MASK     0x0B  //!< 40 for interrupt  mask.
- #define TSL2591_35_VALUES_MASK     0x0A  //!< 35 for interrupt  mask.
- #define TSL2591_30_VALUES_MASK     0x09  //!< 30 for interrupt  mask.
- #define TSL2591_25_VALUES_MASK     0x08  //!< 25 for interrupt  mask.
- #define TSL2591_20_VALUES_MASK     0x07  //!< 20 for interrupt  mask.
- #define TSL2591_15_VALUES_MASK     0x06  //!< 15 for interrupt  mask.
- #define TSL2591_10_VALUES_MASK     0x05  //!< 10 for interrupt  mask.
- #define TSL2591_5_VALUES_MASK      0x04  //!< 5 for interrupt  mask.
- #define TSL2591_3_VALUES_MASK      0x03  //!< 3 for interrupt  mask.
- #define TSL2591_ANY_VALUES_MASK    0x02  //!< Any outside value for interrupt  mask.
- #define TSL2591_ALWAYS_VALUES_MASK 0x01  //!< ALS cycle generates interrupt  mask.
-
  #define TSL2591_PID_MASK           0x30  //!< Product ID mask.
  #define TSL2591_PID_VAL            0x00  //!< Expected PID.
  #define TSL2591_ID_VAL             0x50  //!< Expected Device ID.
@@ -119,6 +94,57 @@
  #define ADC_MAX_COUNT              65530 //!< MAX ADC cound for all but 100 ms atime.
  #define ADC_MAX_COUNT_100          35860 //!< MAX ADC cound when using 100 ms atime.
  #define ADC_MIN_COUNT              20    //!< MIN ADC cound for dark is 20.
+
+enum
+{
+  TSL2591_AGAIN_LOW   = 0x00, //!<ALS gain of x1
+  TSL2591_AGAIN_MED   = 0x01, //!<ALS gain of x24.5
+  TSL2591_AGAIN_HIGH  = 0x02, //!<ALS gain of x400
+  TSL2591_AGAIN_MAX   = 0x03  //!<ALS gain of x 9200 / 9900.
+};
+
+#define TSL2591_AGAIN_LOW_VAL   1.0F
+#define TSL2591_AGAIN_MED_VAL   24.5F
+#define TSL2591_AGAIN_HIGH_VAL  400.0F
+#define TSL2591_AGAIN_MAX_VAL   9900.0F
+
+enum
+{
+  TSL2591_ATIME_100   = 0x00,  //!<ALS time of 100ms.
+  TSL2591_ATIME_200   = 0x01,  //!<ALS time of 200ms.
+  TSL2591_ATIME_300   = 0x02,  //!<ALS time of 300ms.
+  TSL2591_ATIME_400   = 0x03,  //!<ALS time of 400ms.
+  TSL2591_ATIME_500   = 0x04,  //!<ALS time of 500ms.
+  TSL2591_ATIME_600   = 0x05  //!<ALS time of 600ms.
+};
+
+#define TSL2591_ATIME_100_VAL 100.0F
+#define TSL2591_ATIME_200_VAL 200.0F
+#define TSL2591_ATIME_300_VAL 300.0F
+#define TSL2591_ATIME_400_VAL 400.0F
+#define TSL2591_ATIME_500_VAL 500.0F
+#define TSL2591_ATIME_600_VAL 600.0F
+
+enum
+{
+  TSL2591_ALWAYS_VALUES_MASK  = 0x01,  //!< ALS cycle generates interrupt  mask.
+  TSL2591_ANY_VALUES_MASK     = 0x02,  //!< Any outside value for interrupt  mask.
+  TSL2591_3_VALUES_MASK       = 0x03,  //!< 3 for interrupt  mask.
+  TSL2591_5_VALUES_MASK       = 0x04,  //!< 5 for interrupt  mask.
+  TSL2591_10_VALUES_MASK      = 0x05,  //!< 10 for interrupt  mask.
+  TSL2591_15_VALUES_MASK      = 0x06,  //!< 15 for interrupt  mask.
+  TSL2591_20_VALUES_MASK      = 0x07,  //!< 20 for interrupt  mask.
+  TSL2591_25_VALUES_MASK      = 0x08,  //!< 25 for interrupt  mask.
+  TSL2591_30_VALUES_MASK      = 0x09,  //!< 30 for interrupt  mask.
+  TSL2591_35_VALUES_MASK      = 0x0A,  //!< 35 for interrupt  mask.
+  TSL2591_40_VALUES_MASK      = 0x0B,  //!< 40 for interrupt  mask.
+  TSL2591_45_VALUES_MASK      = 0x0C,  //!< 45 for interrupt  mask.
+  TSL2591_50_VALUES_MASK      = 0x0D,  //!< 50 for interrupt  mask.
+  TSL2591_55_VALUES_MASK      = 0x0E,  //!< 55 for interrupt  mask.
+  TSL2591_60_VALUES_MASK      = 0x0F  //!< 60 for interrupt mask.
+};
+
+
 
  class ERW_TSL2591
  {
@@ -143,10 +169,13 @@
 
     /**
      * host_process checks the LUX sensor for valid data and returns the LUX or an error code.
-     *              Only runs once every 2 samples to allow for INT.
+     *              Only runs once every 3 samples to allow for INT.
      *              Impliments auto gain control.
      * @return  LUX reading if all ok. Returns 0 for counts under 20 at minimum gain,
-     *          returns -1 for underflow, returns -2 for overflow.
+     *          -3.0 for auto gain reduction, -1.0 for auto gain increase,
+     *          -5.0 for ADC_MAX_COUNT, -7.0 for ADC_MIN_COUNT,
+     *          -9.0 auto gain set fault, -11.0 interrupt gain fault,
+     *          -13.0 data not ready.
      */
     float host_process(void);
 
@@ -274,6 +303,9 @@
     float current_integration_time;
     float current_gain;
 
+    uint8_t current_time_mask;
+    uint8_t current_gain_mask;
+
     uint8_t current_status;
     uint8_t current_persistence;
     uint8_t current_enable;
@@ -282,8 +314,6 @@
     uint32_t current_timer;
 
     uint32_t last_time;
-
-
 
  };
  #endif

@@ -57,7 +57,7 @@
 {
   TSL2591_I2C = &Wire;
   TSL2591_int_pin = interrupt_pin;
-  initial_persistence = TSL2591_3_VALUES_MASK;
+  initial_persistence = TSL2591_ANY_VALUES_MASK;
   initial_enable = TSL2591_AIEN_MASK | TSL2591_AEN_MASK | TSL2591_PON_MASK;
   initial_INT_l = ADC_MIN_COUNT;
   initial_INT_h = ADC_MAX_COUNT_100;
@@ -110,8 +110,12 @@ int8_t ERW_TSL2591::begin(void)
     {
       returnVal -= 64;
     }
-
+    last_time = millis();
   }
+  #ifdef SERIAL_DEBUG
+    Serial.print("Begin exit: ");
+    Serial.println(returnVal);
+  #endif
   return returnVal;
 }
 
@@ -120,16 +124,93 @@ int8_t ERW_TSL2591::begin(void)
  *              Only runs once every 3 samples to allow for INT.
  *              Impliments auto gain control.
  * @return  LUX reading if all ok. Returns 0 for counts under 20 at minimum gain,
- *          returns -1 for underflow, returns -2 for overflow.
+ *          -3.0 for auto gain reduction, -1.0 for auto gain increase,
+ *          -5.0 for ADC_MAX_COUNT, -7.0 for ADC_MIN_COUNT,
+ *          -9.0 auto gain set fault, -11.0 interrupt gain fault,
+ *          -13.0 data not ready.
  */
 float ERW_TSL2591::host_process(void)
 {
-  float returnVal = 0;
-  // always allow 3 * the atime for an interrupt
-  // check for interrupts.
-  // if interrupt then read val for auto gain control.
-  // if no interrupt return lux.
+  float returnVal = 0.0;
+  if( millis() >= ( last_time + current_timer))
+  {
+    get_values();
+    if(get_interrupts ())
+    {
+      if(( current_full >= current_INT_h) || ( current_IR >= current_INT_h ))
+      {
+        returnVal = -1.0;
+      }
+      else if(( current_full <= initial_INT_l) || ( current_IR <= initial_INT_l ))
+      {
+        returnVal = -3.0;
+      }
 
+      if(( returnVal == -1.0  ) && ( current_gain_mask == TSL2591_AGAIN_LOW))
+      {
+        returnVal = -5.0;
+      }
+      else if(( returnVal == -3.0  ) && ( current_gain_mask == TSL2591_AGAIN_MAX))
+      {
+        returnVal = -7.0;
+      }
+      else
+      {
+        current_gain_mask += 2 + (uint8_t) returnVal;
+      }
+      current_time_mask = current_gain_mask * 3 / 2;
+      if( set_sensitivity(current_gain_mask, current_time_mask) != 0 )
+      {
+        returnVal = -9.0;
+      }
+      if( returnVal == 0 )
+      {
+        returnVal = -11.0;
+      }
+
+      clear_interrupt(TSL2591_NPINTR_MASK | TSL2591_AINT_MASK);
+
+    }
+    else if( get_status() & TSL2591_AVALID_MASK )
+    {
+      returnVal = get_LUX();
+    }
+    else
+    {
+      returnVal = -13.0;
+    }
+    last_time = millis();
+  }
+
+  #ifdef SERIAL_DEBUG
+    switch ((int32_t) returnVal) {
+      case -1:
+        Serial.println("Autogain increase.");
+        break;
+      case -3:
+        Serial.println("Autogain decrease.");
+        break;
+      case -5:
+        Serial.println("ADC_MAX_COUNT");
+        break;
+      case -7:
+        Serial.println("ADC_MIN_COUNT");
+        break;
+      case -9:
+        Serial.println("Autogain set fault.");
+        break;
+      case -11:
+        Serial.println("Interrupt set,but reading OK.");
+        break;
+      case -13:
+        Serial.println("Data not ready.");
+        break;
+      default:
+        Serial.print("LUX: ");
+        Serial.println(returnVal);
+        break;
+    }
+  #endif
   return returnVal;
 }
 
@@ -177,6 +258,10 @@ int8_t ERW_TSL2591::test_INT(void)
   {
     returnVal -= 16;
   }
+  #ifdef SERIAL_DEBUG
+    Serial.print("Interrupt test: ");
+    Serial.println(returnVal);
+  #endif
   return returnVal;
 }
 
@@ -195,6 +280,14 @@ int8_t ERW_TSL2591::enable(uint8_t desired_enable)
   {
     returnVal = -1;
   }
+  #ifdef SERIAL_DEBUG_PRIVATE
+    Serial.print("Desired enable: 0x");
+    Serial.print(desired_enable, HEX);
+    Serial.print("\tRead enable: 0x");
+    Serial.print(current_enable, HEX);
+    Serial.print("\treturnValue: ");
+    Serial.println(returnVal);
+  #endif
   return returnVal;
 }
 
@@ -206,15 +299,24 @@ int8_t ERW_TSL2591::enable(uint8_t desired_enable)
 int8_t ERW_TSL2591::disable(uint8_t desired_disable)
 {
   int8_t returnVal = 0;
+  desired_disable = ~ desired_disable;
+  desired_disable &= current_enable;
   I2C_write(TSL2591_CMD_MASK | TSL2591_ENABLE, desired_disable);
   current_enable = I2C_read(TSL2591_CMD_MASK | TSL2591_ENABLE);
-  desired_disable = ~desired_disable;
   desired_disable &= (TSL2591_NPIEN_MASK | TSL2591_SAI_MASK | TSL2591_AIEN_MASK | TSL2591_AEN_MASK | TSL2591_PON_MASK);
   current_enable &= (TSL2591_NPIEN_MASK | TSL2591_SAI_MASK | TSL2591_AIEN_MASK | TSL2591_AEN_MASK | TSL2591_PON_MASK);
   if( current_enable != desired_disable)
   {
     returnVal = -1;
   }
+  #ifdef SERIAL_DEBUG_PRIVATE
+    Serial.print("Desired disable: 0x");
+    Serial.print(desired_disable, HEX);
+    Serial.print("\tRead enable: 0x");
+    Serial.print(current_enable, HEX);
+    Serial.print("\treturnValue: ");
+    Serial.println(returnVal);
+  #endif
   return returnVal;
 }
 
@@ -224,62 +326,75 @@ int8_t ERW_TSL2591::disable(uint8_t desired_disable)
  * @param[in]  desired_integration_time is the
  * @return 0 good, else returns read with bit 3 set.
  */
-uint8_t ERW_TSL2591::set_sensitivity(uint8_t desired_gain, uint8_t desired_integration_time)
+uint8_t ERW_TSL2591::set_sensitivity(uint8_t desired_gain_mask, uint8_t desired_integration_time_mask)
 {
   uint8_t desired_command = 0;
   uint8_t read_command = 0;
   uint8_t returnVal = 0;
-
-  desired_command = desired_gain | desired_integration_time;
+  desired_gain_mask = desired_gain_mask << 4;
+  desired_command =  desired_gain_mask | desired_integration_time_mask;
 
   I2C_write(TSL2591_CMD_MASK | TSL2591_CONFIG, desired_command);
   read_command = I2C_read(TSL2591_CMD_MASK | TSL2591_CONFIG);
 
-  desired_gain =  read_command | TSL2591_AGAIN_MASK;
-  desired_integration_time = read_command | TSL2591_ATIME_MASK;
+  current_gain_mask =  read_command | TSL2591_AGAIN_MASK;
+  current_time_mask = read_command | TSL2591_ATIME_MASK;
 
-  switch(desired_gain){
+  switch(current_gain_mask){
     case TSL2591_AGAIN_MAX:
-      current_gain = 9900.0F;
+      current_gain = TSL2591_AGAIN_MAX_VAL;
       break;
     case TSL2591_AGAIN_HIGH:
-      current_gain = 400.0F;
+      current_gain = TSL2591_AGAIN_HIGH_VAL;
       break;
     case TSL2591_AGAIN_MED:
-      current_gain = 24.5F;
+      current_gain = TSL2591_AGAIN_MED_VAL;
       break;
     default:
-      current_gain = 1.0F;
+      current_gain = TSL2591_AGAIN_LOW_VAL;
       break;
   }
 
-  switch(desired_integration_time){
+  switch(current_time_mask){
     case TSL2591_ATIME_600:
-      current_integration_time = 600.0;
+      current_integration_time = TSL2591_ATIME_600_VAL;
       break;
     case TSL2591_ATIME_500:
-      current_integration_time = 500.0;
+      current_integration_time = TSL2591_ATIME_500_VAL;
       break;
     case TSL2591_ATIME_400:
-      current_integration_time = 400.0;
+      current_integration_time = TSL2591_ATIME_400_VAL;
       break;
     case TSL2591_ATIME_300:
-      current_integration_time = 300.0;
+      current_integration_time = TSL2591_ATIME_300_VAL;
       break;
     case TSL2591_ATIME_200:
-      current_integration_time = 200.0;
+      current_integration_time = TSL2591_ATIME_200_VAL;
       break;
     default:
-      current_integration_time = 100.0;
+      current_integration_time = TSL2591_ATIME_100_VAL;
       break;
   }
+
   current_timer = (uint32_t) current_integration_time + initial_timer_offset;
 
   if( desired_command != read_command)
   {
     returnVal = read_command | 0x08; //set reserved bit to allow for all 0 read as fault.
   }
-
+  #ifdef SERIAL_DEBUG_PRIVATE
+    Serial.println("Sensitivity:");
+    Serial.print("\tDesired gain: 0x");
+    Serial.print(desired_gain_mask, HEX);
+    Serial.print("\tRead gain: 0x");
+    Serial.println(current_gain, HEX);
+    Serial.print("\tDesired time: 0x");
+    Serial.print(desired_integration_time_mask, HEX);
+    Serial.print("\tRead time: 0x");
+    Serial.println(current_time_mask, HEX);
+    Serial.print("\treturnValue: ");
+    Serial.println(returnVal);
+  #endif
   return returnVal;
 
 }
@@ -298,6 +413,14 @@ int8_t ERW_TSL2591::set_persistence(uint8_t desired_persistence)
   {
     returnVal = -1;
   }
+  #ifdef SERIAL_DEBUG_PRIVATE
+    Serial.print("Desired persist: 0x");
+    Serial.print(desired_persistence, HEX);
+    Serial.print("\tRead persist: 0x");
+    Serial.print(current_persistence, HEX);
+    Serial.print("\treturnValue: ");
+    Serial.println(returnVal);
+  #endif
   return returnVal;
 }
 
@@ -332,6 +455,19 @@ int8_t ERW_TSL2591::set_interrupts(uint16_t desired_int_low, uint16_t desired_in
   {
     returnVal -= 2;
   }
+  #ifdef SERIAL_DEBUG_PRIVATE
+    Serial.println("Interrupt:");
+    Serial.print("\tDesired INT l: ");
+    Serial.print(desired_int_low);
+    Serial.print("\tRead INT l: ");
+    Serial.println(current_INT_l);
+    Serial.print("\tDesired INT h: ");
+    Serial.print(desired_int_high);
+    Serial.print("\tRead INT h: ");
+    Serial.println(current_INT_h);
+    Serial.print("\treturnValue: ");
+    Serial.println(returnVal);
+  #endif
   return returnVal;
 }
 
@@ -363,6 +499,14 @@ int8_t ERW_TSL2591::clear_interrupt(uint8_t desired_int_to_clear)
   {
     returnVal = -1;
   }
+  #ifdef SERIAL_DEBUG_PRIVATE
+    Serial.print("Desired clear: 0x");
+    Serial.print(desired_int_to_clear, HEX);
+    Serial.print("\tRead INT: 0x");
+    Serial.print(clear_holder, HEX);
+    Serial.print("\treturnValue: ");
+    Serial.println(returnVal);
+  #endif
   return returnVal;
 }
 
@@ -376,6 +520,33 @@ float ERW_TSL2591::get_LUX(void)
   float LUX_denomenator = (current_gain * current_integration_time) / TSL2591_LUX_DF;
   LUX_numerator = ( current_full - current_IR ) * ( 1 - ( current_IR / current_full ));
   current_LUX = LUX_numerator / LUX_denomenator;
+  #ifdef SERIAL_DEBUG_PRIVATE
+    Serial.println("LUX reading:");
+    Serial.print("\tLUX:");
+    Serial.println(current_LUX);
+
+    Serial.print("\tNumerator:\t");
+    Serial.print(LUX_numerator);
+    Serial.print(" = ( ");
+    Serial.print(current_full);
+    Serial.print(" - ");
+    Serial.print(current_IR);
+    Serial.print(" ) * ( 1 - ( ");
+    Serial.print(current_IR);
+    Serial.print(" / ");
+    Serial.print(current_full);
+    Serial.print(" )");
+    Serial.println();
+
+    Serial.print("\tDenoninator:\t");
+    Serial.print(LUX_denomenator);
+    Serial.print(" = ( ");
+    Serial.print(current_gain);
+    Serial.print(" * ");
+    Serial.print(current_integration_time);
+    Serial.print(" ) / ");
+    Serial.println(TSL2591_LUX_DF);
+  #endif
   return current_LUX;
 }
 
@@ -386,6 +557,20 @@ float ERW_TSL2591::get_LUX(void)
 uint8_t ERW_TSL2591::get_status(void)
 {
   current_status = I2C_read(TSL2591_CMD_MASK | TSL2591_STATUS);
+  #ifdef SERIAL_DEBUG_PRIVATE
+    Serial.print("Status:");
+    Serial.print("\tDesired gain: 0x");
+    Serial.print(desired_gain_mask, HEX);
+    Serial.print("\tRead gain: 0x");
+    Serial.println(current_gain, HEX);
+    Serial.print("\tDesired time: 0x");
+    Serial.print(desired_integration_time_mask, HEX);
+    Serial.print("\tRead time: 0x");
+    Serial.println(current_time_mask, HEX);
+    Serial.print("\treturnValue: ");
+    Serial.println(returnVal);
+  #endif
+
   return current_status;
 }
 
@@ -400,17 +585,35 @@ void ERW_TSL2591::get_values(void)
   TSL2591_I2C->write(TSL2591_FULL_DATAL);
   TSL2591_I2C->endTransmission();
   TSL2591_I2C->requestFrom((uint8_t)TSL2591_ADDR, (uint8_t)4);
-  int blah = TSL2591_I2C->available();
-  Serial.print("Bytes Available: ");
-  Serial.println(blah);
   read_holder = TSL2591_I2C->read();
   current_full = TSL2591_I2C->read();
+  #ifdef SERIAL_DEBUG_PRIVATE
+    Serial.println("Channel Values:");
+    Serial.print("\tFull high: 0x");
+    Serial.print(current_full, HEX);
+    Serial.print("\tFull low: 0x");
+    Serial.print(read_holder, HEX);
+  #endif
   current_full <<= 8;
   current_full |= read_holder;
+  #ifdef SERIAL_DEBUG_PRIVATE
+    Serial.print("\tFull complete: 0x");
+    Serial.println(current_full, HEX);
+  #endif
   read_holder = TSL2591_I2C->read();
   current_IR = TSL2591_I2C->read();
+  #ifdef SERIAL_DEBUG_PRIVATE
+    Serial.print("\tIR high: 0x");
+    Serial.print(current_IR, HEX);
+    Serial.print("\tIR low: 0x");
+    Serial.println(read_holder, HEX);
+  #endif
   current_IR <<= 8;
   current_IR |= read_holder;
+  #ifdef SERIAL_DEBUG_PRIVATE
+    Serial.print("\tIR complete: 0x");
+    Serial.println(current_IR, HEX);
+  #endif
 }
 
 /**
@@ -426,6 +629,11 @@ uint8_t ERW_TSL2591::get_interrupts(void)
     returnVal &= (TSL2591_NPINTR_MASK |  TSL2591_AINT_MASK);
     returnVal |= 0xF0;
   }
+  #ifdef SERIAL_DEBUG_PRIVATE
+    Serial.print("read Interrupts: 0x");
+    Serial.println(returnVal, HEX);
+  #endif
+
   return returnVal;
 }
 
