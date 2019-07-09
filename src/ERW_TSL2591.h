@@ -37,8 +37,8 @@
  #include <Arduino.h>
  #include <Wire.h>
 
- #define SERIAL_DEBUG
- #define SERIAL_DEBUG_PRIVATE
+ #define SERIAL_DEBUG 1
+ //#define SERIAL_DEBUG_PRIVATE 1
 
  // Channel 0 is full light spectrum. Channel 1 is IR spectrum.
 
@@ -85,7 +85,6 @@
  #define TSL2591_PID_VAL            0x00  //!< Expected PID.
  #define TSL2591_ID_VAL             0x50  //!< Expected Device ID.
 
-
  #define TSL2591_NPINTR_MASK        0x20  //!< No persist interrupt indicator mask.
  #define TSL2591_AINT_MASK          0x10  //!< ALS interrupt indicator mask.
  #define TSL2591_AVALID_MASK        0x01  //!< ALS data valid mask.
@@ -95,7 +94,7 @@
  #define ADC_MAX_COUNT_100          35860 //!< MAX ADC cound when using 100 ms atime.
  #define ADC_MIN_COUNT              20    //!< MIN ADC cound for dark is 20.
 
-enum
+enum : uint8_t
 {
   TSL2591_AGAIN_LOW   = 0x00, //!<ALS gain of x1
   TSL2591_AGAIN_MED   = 0x01, //!<ALS gain of x24.5
@@ -108,7 +107,7 @@ enum
 #define TSL2591_AGAIN_HIGH_VAL  400.0F
 #define TSL2591_AGAIN_MAX_VAL   9900.0F
 
-enum
+enum : uint8_t
 {
   TSL2591_ATIME_100   = 0x00,  //!<ALS time of 100ms.
   TSL2591_ATIME_200   = 0x01,  //!<ALS time of 200ms.
@@ -125,7 +124,7 @@ enum
 #define TSL2591_ATIME_500_VAL 500.0F
 #define TSL2591_ATIME_600_VAL 600.0F
 
-enum
+enum : uint8_t
 {
   TSL2591_ALWAYS_VALUES_MASK  = 0x01,  //!< ALS cycle generates interrupt  mask.
   TSL2591_ANY_VALUES_MASK     = 0x02,  //!< Any outside value for interrupt  mask.
@@ -168,14 +167,22 @@ enum
  		int8_t begin(void);
 
     /**
+     * initial_setup
+     * @return  is 0 for OK, -4 for set int fault, -8 for set persist fault,
+     *          -16 for set set_sensitivity fault, and -32 for enable fault,
+     *          -64 for test_INT fault.
+     */
+    int8_t initial_setup(void);
+
+    /**
      * host_process checks the LUX sensor for valid data and returns the LUX or an error code.
      *              Only runs once every 3 samples to allow for INT.
      *              Impliments auto gain control.
      * @return  LUX reading if all ok. Returns 0 for counts under 20 at minimum gain,
-     *          -3.0 for auto gain reduction, -1.0 for auto gain increase,
-     *          -5.0 for ADC_MAX_COUNT, -7.0 for ADC_MIN_COUNT,
-     *          -9.0 auto gain set fault, -11.0 interrupt gain fault,
-     *          -13.0 data not ready.
+     *          -1.0 for auto gain reduction, -2.0 for auto gain increase,
+     *          -3.0 for ADC_MIN_COUNT, -4.0 for ADC_MAX_COUNT,
+     *          -10.0 auto gain set fault, -11.0 interrupt gain fault,
+     *          -20.0 data not ready.
      */
     float host_process(void);
 
@@ -291,6 +298,7 @@ enum
 
  	//Private Variables
 
+    uint8_t interrupt_hw_sw;
     int TSL2591_int_pin;
     uint8_t initial_persistence;
     uint8_t initial_enable;
