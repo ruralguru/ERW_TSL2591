@@ -37,7 +37,7 @@
  #include <Arduino.h>
  #include <Wire.h>
 
- #define SERIAL_DEBUG 1
+ //#define SERIAL_DEBUG 1
  //#define SERIAL_DEBUG_PRIVATE 1
 
  // Channel 0 is full light spectrum. Channel 1 is IR spectrum.

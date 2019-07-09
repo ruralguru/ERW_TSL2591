@@ -158,7 +158,7 @@ int8_t ERW_TSL2591::initial_setup(void)
  */
 float ERW_TSL2591::host_process(void)
 {
-  float returnVal = 0.0;
+  float returnVal = -20.0;
   uint8_t get_LUX_flag = 1;
   uint32_t current_millis = millis();
   if( current_millis >= ( last_time + current_timer))
@@ -230,6 +230,7 @@ float ERW_TSL2591::host_process(void)
       returnVal = -20.0;
     }
     last_time = current_millis;
+
     #ifdef SERIAL_DEBUG
       Serial.print("FULL Count: ");
       Serial.print(current_full);
